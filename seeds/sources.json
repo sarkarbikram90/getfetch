@@ -1,0 +1,202 @@
+[
+  {
+    "company_name": "GitLab",
+    "source_type": "greenhouse",
+    "board_identifier": "gitlab",
+    "source_url": "https://boards.greenhouse.io/gitlab",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Cloudflare",
+    "source_type": "greenhouse",
+    "board_identifier": "cloudflare",
+    "source_url": "https://boards.greenhouse.io/cloudflare",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "HashiCorp",
+    "source_type": "greenhouse",
+    "board_identifier": "hashicorp",
+    "source_url": "https://boards.greenhouse.io/hashicorp",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Datadog",
+    "source_type": "greenhouse",
+    "board_identifier": "datadog",
+    "source_url": "https://boards.greenhouse.io/datadog",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Canonical",
+    "source_type": "greenhouse",
+    "board_identifier": "canonical",
+    "source_url": "https://boards.greenhouse.io/canonical",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Elastic",
+    "source_type": "greenhouse",
+    "board_identifier": "elastic",
+    "source_url": "https://boards.greenhouse.io/elastic",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "MongoDB",
+    "source_type": "greenhouse",
+    "board_identifier": "mongodb",
+    "source_url": "https://boards.greenhouse.io/mongodb",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Figma",
+    "source_type": "greenhouse",
+    "board_identifier": "figma",
+    "source_url": "https://boards.greenhouse.io/figma",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Stripe",
+    "source_type": "greenhouse",
+    "board_identifier": "stripe",
+    "source_url": "https://boards.greenhouse.io/stripe",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Cockroach Labs",
+    "source_type": "greenhouse",
+    "board_identifier": "cockroachlabs",
+    "source_url": "https://boards.greenhouse.io/cockroachlabs",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Snyk",
+    "source_type": "greenhouse",
+    "board_identifier": "snyk",
+    "source_url": "https://boards.greenhouse.io/snyk",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Reddit",
+    "source_type": "greenhouse",
+    "board_identifier": "reddit",
+    "source_url": "https://boards.greenhouse.io/reddit",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "PagerDuty",
+    "source_type": "greenhouse",
+    "board_identifier": "pagerduty",
+    "source_url": "https://boards.greenhouse.io/pagerduty",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Palantir",
+    "source_type": "lever",
+    "board_identifier": "palantir",
+    "source_url": "https://jobs.lever.co/palantir",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Docker",
+    "source_type": "lever",
+    "board_identifier": "docker",
+    "source_url": "https://jobs.lever.co/docker",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Spotify",
+    "source_type": "lever",
+    "board_identifier": "spotify",
+    "source_url": "https://jobs.lever.co/spotify",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Atlassian",
+    "source_type": "lever",
+    "board_identifier": "atlassian",
+    "source_url": "https://jobs.lever.co/atlassian",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Grafana Labs",
+    "source_type": "lever",
+    "board_identifier": "grafanalabs",
+    "source_url": "https://jobs.lever.co/grafanalabs",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Replit",
+    "source_type": "ashby",
+    "board_identifier": "replit",
+    "source_url": "https://jobs.ashbyhq.com/replit",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Linear",
+    "source_type": "ashby",
+    "board_identifier": "linear",
+    "source_url": "https://jobs.ashbyhq.com/linear",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Cursor",
+    "source_type": "ashby",
+    "board_identifier": "cursor",
+    "source_url": "https://jobs.ashbyhq.com/cursor",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Sourcegraph",
+    "source_type": "ashby",
+    "board_identifier": "sourcegraph",
+    "source_url": "https://jobs.ashbyhq.com/sourcegraph",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Scale AI",
+    "source_type": "ashby",
+    "board_identifier": "scale",
+    "source_url": "https://jobs.ashbyhq.com/scale",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Ramp",
+    "source_type": "ashby",
+    "board_identifier": "ramp",
+    "source_url": "https://jobs.ashbyhq.com/ramp",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  },
+  {
+    "company_name": "Postman",
+    "source_type": "ashby",
+    "board_identifier": "postman",
+    "source_url": "https://jobs.ashbyhq.com/postman",
+    "crawl_interval_minutes": 360,
+    "enabled": true
+  }
+]
