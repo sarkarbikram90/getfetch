@@ -31,6 +31,14 @@ type Store interface {
 	ListJobs(ctx context.Context, filter JobFilter) ([]model.Job, int, error)
 	ReconcileSourceJobs(ctx context.Context, sourceID int64, activeExternalIDs []string) (int64, error)
 
+	// User bookmarks & application tracker
+	SaveJob(ctx context.Context, jobID int64, status, notes string) error
+	UnsaveJob(ctx context.Context, jobID int64) error
+	GetSavedJobs(ctx context.Context) ([]model.SavedJobWithJob, error)
+
+	// Dashboard metrics
+	GetDashboardStats(ctx context.Context) (*model.DashboardStats, error)
+
 	// CrawlRun audit operations
 	StartCrawlRun(ctx context.Context, sourceID int64) (int64, error)
 	FinishCrawlRun(ctx context.Context, runID int64, status string, discovered, matched, newJobs, updatedJobs int, errMsg *string) error

@@ -113,3 +113,28 @@ type CrawlRun struct {
 	JobsUpdated    int        `json:"jobs_updated"`
 	ErrorMessage   *string    `json:"error_message,omitempty"`
 }
+
+// SavedJob represents a bookmarked or tracked job application
+type SavedJob struct {
+	ID        int64      `json:"id"`
+	JobID     int64      `json:"job_id"`
+	Status    string     `json:"status"` // 'saved', 'applied', 'interviewing', 'rejected', 'archived'
+	Notes     string     `json:"notes"`
+	AppliedAt *time.Time `json:"applied_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+// SavedJobWithJob combines saved metadata with the full job listing
+type SavedJobWithJob struct {
+	SavedJob
+	Job Job `json:"job"`
+}
+
+// DashboardStats provides overview metrics for the web dashboard
+type DashboardStats struct {
+	TotalActiveJobs    int            `json:"total_active_jobs"`
+	NewJobsLast24h     int            `json:"new_jobs_last_24h"`
+	TotalSourcesActive int            `json:"total_sources_active"`
+	TopSkills          map[string]int `json:"top_skills"`
+}

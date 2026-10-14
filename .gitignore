@@ -7,4 +7,11 @@ bin/
 *.test
 *.out
 .env
+.env*.local
 .DS_Store
+
+# Next.js
+web/node_modules/
+web/.next/
+web/out/
+web/.turbo/

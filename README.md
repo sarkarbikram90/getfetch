@@ -1,8 +1,49 @@
 # getfetch / KubeJobs
 
-An automated, high-precision job discovery and intelligence engine focusing on **Kubernetes, Platform Engineering, SRE, and Cloud Infrastructure** positions.
+An automated, high-precision job discovery and intelligence platform focusing on **Kubernetes, Platform Engineering, SRE, and Cloud Infrastructure** positions.
 
-Instead of unreliable, fragile HTML scraping, `getfetch` uses direct public ATS API connectors (**Greenhouse**, **Lever**, **Ashby**) to poll published career boards, normalizes job data, runs a deterministic skill-matching engine, extracts match proof snippets, deduplicates via SHA256 content hashes, reconciles closed postings, dispatches email/webhook digests, and persists listings to PostgreSQL with full-text search.
+Instead of unreliable, fragile HTML scraping, `getfetch` uses direct public ATS API connectors (**Greenhouse**, **Lever**, **Ashby**) to poll published career boards, normalizes job data, runs a deterministic skill-matching engine, extracts match proof snippets, deduplicates via SHA256 content hashes, reconciles closed postings, dispatches email/webhook digests, and serves a full **REST API** with a modern **Next.js & TypeScript dashboard**.
+
+---
+
+## Architecture Overview
+
+```
+                      ┌──────────────────────┐
+                      │   Public ATS APIs    │
+                      │ Greenhouse/Lever/Ash │
+                      └──────────┬───────────┘
+                                 │
+                     ┌───────────▼───────────┐
+                     │   Ingestion Worker    │  (cmd/worker)
+                     │ - Rate limiter & 429  │
+                     │ - HTML & URL cleaner  │
+                     │ - Skill/Role matcher  │
+                     │ - Content hasher      │
+                     │ - State reconciler    │
+                     └─────┬───────────┬─────┘
+                           │           │
+                 Alerts    │           │ Persist & Deduplicate
+        (Resend/Webhooks)  │           │
+                           ▼           ▼
+                   ┌──────────┐  ┌──────────────┐
+                   │  Slack / │  │  PostgreSQL  │ (Full-text GIN,
+                   │  Email   │  │   Database   │  Skills & Roles GIN)
+                   └──────────┘  └──────┬───────┘
+                                        │
+                               ┌────────▼────────┐
+                               │   Go REST API   │ (cmd/api)
+                               │ - Jobs & Search │
+                               │ - Saved Tracker │
+                               │ - Source Health │
+                               │ - Prometheus    │
+                               └────────┬────────┘
+                                        │
+                               ┌────────▼────────┐
+                               │     Next.js     │ (web/)
+                               │  Web Dashboard  │
+                               └─────────────────┘
+```
 
 ---
 
@@ -18,113 +59,100 @@ Instead of unreliable, fragile HTML scraping, `getfetch` uses direct public ATS 
 - **URL & HTML Normalization**: Strips tracking tokens (`utm_*`, `gh_src`, `lever-source`), canonicalizes URLs, strips HTML tags cleanly without mashing words.
 - **Deduplication & Change Detection**: SHA256 content hashing detects title/JD updates across recrawls without triggering duplicate alerts.
 - **State Reconciliation**: Automatically marks jobs as `closed` in PostgreSQL when they are no longer published on subsequent crawls.
+- **Go REST API Server** (`cmd/api`):
+  - `GET /api/v1/jobs` (full-text search, skills, roles, remote, location filtering, pagination)
+  - `GET /api/v1/jobs/{id}`
+  - `POST /api/v1/jobs/{id}/save` & `DELETE /api/v1/jobs/{id}/save` (personal application tracker)
+  - `GET /api/v1/saved` (bookmarked roles)
+  - `GET /api/v1/sources` (monitored boards)
+  - `GET /api/v1/stats` (overview counts & top skills)
+  - `GET /healthz` & `GET /metrics`
+- **Next.js Web Dashboard** (`web/`):
+  - Fast, clean, dark-themed UI built with Tailwind CSS & TypeScript.
+  - Real-time debounced full-text search.
+  - Multi-tag filtering for Skills, Target Roles, Remote/Hybrid modes, and India locations.
+  - Personal **Application Tracker** (`Saved`, `Applied`, `Interviewing`, `Rejected`).
+  - **Monitored Sources Directory** with live health checks.
 - **Alerts & Daily Digests**:
   - **Email Digests (Resend)**: Sends responsive, modern HTML digests with match pills, snippets, and direct links.
   - **Webhooks**: Sends real-time notifications to Slack or Discord incoming webhook URLs.
 - **SRE Observability**: Built-in Prometheus metrics (`/metrics`) tracking fetch latency, discovery counts, match rates, notification delivery, and errors.
-- **PostgreSQL 16**: Full-text search (GIN index), GIN array indexes on skills and roles, JSONB source payloads.
 
 ---
 
 ## Quickstart
 
-### 1. Test Ingestion in Dry-Run Mode (No DB Needed)
-
-You can run the worker immediately without setting up a database:
-
-```bash
-# Dry-run against all seed companies
-go run ./cmd/worker -dry-run
-
-# Test a single company board
-go run ./cmd/worker -dry-run -source gitlab
-go run ./cmd/worker -dry-run -source replit
-go run ./cmd/worker -dry-run -source palantir
-
-# Test by ATS provider
-go run ./cmd/worker -dry-run -type ashby
-```
-
-### 2. Run with PostgreSQL & Docker Compose
-
-Start PostgreSQL 16 and Prometheus:
+### 1. Run Everything via Docker Compose (Single Command)
 
 ```bash
 docker compose -f deployments/docker-compose.yml up -d
 ```
 
-Run the ingestion worker to populate the database:
+This starts:
+- **PostgreSQL 16**: `localhost:5432`
+- **Go REST API**: `http://localhost:8080`
+- **Next.js Dashboard**: `http://localhost:3000`
+- **Prometheus**: `http://localhost:9091`
+- **Ingestion Worker**: Polling company boards in the background
 
+---
+
+### 2. Local Development (Step-by-Step)
+
+#### Step 1: Start Database
+```bash
+docker compose -f deployments/docker-compose.yml up -d postgres
+```
+
+#### Step 2: Ingest Jobs into Database
 ```bash
 export DATABASE_URL="postgres://postgres:postgrespassword@localhost:5432/getfetch?sslmode=disable"
 go run ./cmd/worker
 ```
 
-### 3. Configure Email or Webhook Alerts
+*(Or test in dry-run mode without database: `go run ./cmd/worker -dry-run -source gitlab`)*
 
+#### Step 3: Start Go REST API
 ```bash
-# Email alerts via Resend
-export RESEND_API_KEY="re_..."
-export NOTIFY_EMAIL="your-email@example.com"
-
-# Slack or Discord webhook alerts
-export WEBHOOK_URL="https://hooks.slack.com/services/..."
-
-# Run crawler with alerts enabled
-go run ./cmd/worker
+go run ./cmd/api -port 8080
 ```
 
-### 4. Continuous Scheduling Mode
-
-Run the worker as a continuous background daemon that polls every 4 hours:
-
+#### Step 4: Start Next.js Frontend
 ```bash
-go run ./cmd/worker -loop -interval 4h
+cd web
+npm run dev
 ```
+
+Open **`http://localhost:3000`** in your browser to explore jobs and track applications!
 
 ---
 
-## CLI Options
+## REST API Reference
 
-| Flag | Description | Default / Env |
+| Endpoint | Method | Description |
 | :--- | :--- | :--- |
-| `-dry-run` | Runs crawling without persisting to database | `false` |
-| `-seeds` | Path to JSON file with seed companies | `seeds/sources.json` |
-| `-source` | Filter crawling to a specific company/board | `""` (all) |
-| `-type` | Filter by ATS type (`greenhouse`, `lever`, `ashby`) | `""` (all) |
-| `-db` | PostgreSQL connection URL | `DATABASE_URL` env |
-| `-metrics-port`| Port to expose Prometheus `/metrics` | `9090` |
-| `-concurrency` | Number of concurrent boards to fetch | `3` |
-| `-loop` | Run continuously on a periodic schedule | `false` |
-| `-interval` | Interval between scheduled runs when `-loop` is active | `4h` |
-| `-notify-email`| Recipient email for daily digest | `NOTIFY_EMAIL` env |
-| `-resend-key` | Resend API key for email delivery | `RESEND_API_KEY` env |
-| `-from-email` | Sender email address | `FROM_EMAIL` env |
-| `-webhook-url`| Slack / Discord webhook URL | `WEBHOOK_URL` env |
+| `/api/v1/jobs` | `GET` | List matching jobs with filtering (`q`, `skills`, `roles`, `remote`, `country`, `limit`, `offset`) |
+| `/api/v1/jobs/{id}` | `GET` | Retrieve full job details by ID |
+| `/api/v1/jobs/{id}/save` | `POST` | Bookmark or update application status (`saved`, `applied`, `interviewing`, `rejected`) |
+| `/api/v1/jobs/{id}/save` | `DELETE`| Remove job from personal tracker |
+| `/api/v1/saved` | `GET` | List all tracked applications |
+| `/api/v1/sources` | `GET` | List registered ATS company boards & crawl health |
+| `/api/v1/stats` | `GET` | Overview metrics (active jobs, today's jobs, top skills) |
+| `/healthz` | `GET` | Liveness health check |
+| `/metrics` | `GET` | Prometheus observability metrics |
 
 ---
 
-## Project Structure
+## Running Tests
 
+Run the full Go test suite:
+
+```bash
+go test -v ./...
 ```
-getfetch/
-├── cmd/
-│   └── worker/                 # Ingestion worker CLI with scheduling & alerts
-├── internal/
-│   ├── adapter/                # ATS connectors (Greenhouse, Lever, Ashby)
-│   ├── engine/                 # Ingestion pipeline orchestrator & reconciler
-│   ├── httputil/               # Resilient HTTP client (exponential backoff & 429 handling)
-│   ├── matcher/                # Deterministic skill/role matcher & snippet extractor
-│   ├── model/                  # Domain models (Job, Source, CrawlRun)
-│   ├── normalizer/             # HTML stripping, URL canonicalization, content hashing
-│   ├── notify/                 # Resend email and Slack/Discord webhook dispatchers
-│   ├── store/                  # Storage interface & PostgreSQL repository
-│   └── telemetry/              # Prometheus metrics
-├── seeds/
-│   └── sources.json            # Curated seed list of top tech companies
-├── deployments/
-│   ├── docker-compose.yml      # Local Postgres & Prometheus
-│   ├── Dockerfile.worker       # Multi-stage container build
-│   └── prometheus.yml          # Prometheus scrape config
-└── Makefile
+
+Test the Next.js frontend production build:
+
+```bash
+cd web && npm run build
 ```

@@ -19,6 +19,47 @@ services:
       timeout: 5s
       retries: 5
 
+  api:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.api
+    container_name: getfetch-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: "postgres://postgres:postgrespassword@postgres:5432/getfetch?sslmode=disable"
+      PORT: "8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+    container_name: getfetch-worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgres://postgres:postgrespassword@postgres:5432/getfetch?sslmode=disable"
+    command: ["-loop", "-interval=4h"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.web
+    container_name: getfetch-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:8080/api/v1"
+    depends_on:
+      - api
+
   prometheus:
     image: prom/prometheus:latest
     container_name: getfetch-prometheus

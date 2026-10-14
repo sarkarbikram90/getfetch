@@ -419,3 +419,111 @@ func (s *PostgresStore) FinishCrawlRun(ctx context.Context, runID int64, status 
 
 	return nil
 }
+
+// SaveJob inserts or updates a bookmarked job
+func (s *PostgresStore) SaveJob(ctx context.Context, jobID int64, status, notes string) error {
+	if status == "" {
+		status = "saved"
+	}
+	query := `
+		INSERT INTO user_saved_jobs (job_id, status, notes, updated_at)
+		VALUES ($1, $2, $3, NOW())
+		ON CONFLICT (job_id) DO UPDATE SET
+			status = EXCLUDED.status,
+			notes = EXCLUDED.notes,
+			updated_at = NOW()
+	`
+	_, err := s.pool.Exec(ctx, query, jobID, status, notes)
+	if err != nil {
+		return fmt.Errorf("failed to save job: %w", err)
+	}
+	return nil
+}
+
+// UnsaveJob removes a job from bookmarks
+func (s *PostgresStore) UnsaveJob(ctx context.Context, jobID int64) error {
+	query := `DELETE FROM user_saved_jobs WHERE job_id = $1`
+	_, err := s.pool.Exec(ctx, query, jobID)
+	if err != nil {
+		return fmt.Errorf("failed to unsave job: %w", err)
+	}
+	return nil
+}
+
+// GetSavedJobs returns all tracked jobs with full details
+func (s *PostgresStore) GetSavedJobs(ctx context.Context) ([]model.SavedJobWithJob, error) {
+	query := `
+		SELECT s.id, s.job_id, s.status, s.notes, s.applied_at, s.created_at, s.updated_at,
+		       j.id, j.source_id, j.external_id, j.canonical_url, j.company_name, j.title,
+		       j.location, j.remote_type, j.country, j.department, j.description_text,
+		       j.matched_skills, j.matched_roles, j.snippet_match, j.content_hash, j.posted_at,
+		       j.first_seen_at, j.last_seen_at, j.status, j.created_at, j.updated_at
+		FROM user_saved_jobs s
+		JOIN jobs j ON s.job_id = j.id
+		ORDER BY s.updated_at DESC
+	`
+	rows, err := s.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query saved jobs: %w", err)
+	}
+	defer rows.Close()
+
+	var result []model.SavedJobWithJob
+	for rows.Next() {
+		var item model.SavedJobWithJob
+		err := rows.Scan(
+			&item.ID, &item.JobID, &item.Status, &item.Notes, &item.AppliedAt, &item.CreatedAt, &item.UpdatedAt,
+			&item.Job.ID, &item.Job.SourceID, &item.Job.ExternalID, &item.Job.CanonicalURL, &item.Job.CompanyName, &item.Job.Title,
+			&item.Job.Location, &item.Job.RemoteType, &item.Job.Country, &item.Job.Department, &item.Job.DescriptionText,
+			&item.Job.MatchedSkills, &item.Job.MatchedRoles, &item.Job.SnippetMatch, &item.Job.ContentHash, &item.Job.PostedAt,
+			&item.Job.FirstSeenAt, &item.Job.LastSeenAt, &item.Job.Status, &item.Job.CreatedAt, &item.Job.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan saved job: %w", err)
+		}
+		result = append(result, item)
+	}
+	return result, nil
+}
+
+// GetDashboardStats aggregates overview metrics for the dashboard
+func (s *PostgresStore) GetDashboardStats(ctx context.Context) (*model.DashboardStats, error) {
+	stats := &model.DashboardStats{
+		TopSkills: make(map[string]int),
+	}
+
+	// 1. Total active jobs
+	_ = s.pool.QueryRow(ctx, "SELECT COUNT(*) FROM jobs WHERE status = 'active'").Scan(&stats.TotalActiveJobs)
+
+	// 2. New jobs in last 24h
+	_ = s.pool.QueryRow(ctx, "SELECT COUNT(*) FROM jobs WHERE status = 'active' AND first_seen_at >= NOW() - INTERVAL '24 hours'").Scan(&stats.NewJobsLast24h)
+
+	// 3. Total active sources
+	_ = s.pool.QueryRow(ctx, "SELECT COUNT(*) FROM sources WHERE enabled = TRUE").Scan(&stats.TotalSourcesActive)
+
+	// 4. Top skills
+	skillsQuery := `
+		SELECT skill, COUNT(*) as cnt
+		FROM (
+			SELECT unnest(matched_skills) AS skill
+			FROM jobs
+			WHERE status = 'active'
+		) t
+		GROUP BY skill
+		ORDER BY cnt DESC
+		LIMIT 10
+	`
+	rows, err := s.pool.Query(ctx, skillsQuery)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var skill string
+			var count int
+			if err := rows.Scan(&skill, &count); err == nil {
+				stats.TopSkills[skill] = count
+			}
+		}
+	}
+
+	return stats, nil
+}
