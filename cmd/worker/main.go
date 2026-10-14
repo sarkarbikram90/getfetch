@@ -21,22 +21,61 @@ import (
 	"github.com/bikrams/getfetch/internal/engine"
 	"github.com/bikrams/getfetch/internal/matcher"
 	"github.com/bikrams/getfetch/internal/model"
+	"github.com/bikrams/getfetch/internal/notify"
 	"github.com/bikrams/getfetch/internal/store/postgres"
+	"github.com/bikrams/getfetch/internal/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+type Config struct {
+	DryRun      bool
+	SeedsPath   string
+	SourceFlag  string
+	TypeFlag    string
+	DBURL       string
+	MetricsPort int
+	Concurrency int
+	Loop        bool
+	Interval    time.Duration
+	NotifyEmail string
+	ResendKey   string
+	FromEmail   string
+	WebhookURL  string
+}
+
 func main() {
-	var (
-		dryRun      = flag.Bool("dry-run", false, "Run crawler in dry-run mode without database connection")
-		seedsPath   = flag.String("seeds", "seeds/sources.json", "Path to initial seed sources JSON")
-		sourceFlag  = flag.String("source", "", "Filter crawling to a specific company or board identifier")
-		typeFlag    = flag.String("type", "", "Filter crawling to a specific ATS type (greenhouse, lever, ashby)")
-		dbURL       = flag.String("db", "", "PostgreSQL database connection URL (defaults to DATABASE_URL env)")
-		metricsPort = flag.Int("metrics-port", 9090, "Port to serve Prometheus /metrics (set to 0 to disable)")
-		concurrency = flag.Int("concurrency", 3, "Number of concurrent sources to process")
-		loop        = flag.Bool("loop", false, "Run continuously on a periodic schedule instead of exiting")
-	)
+	var cfg Config
+	flag.BoolVar(&cfg.DryRun, "dry-run", false, "Run crawler in dry-run mode without database connection")
+	flag.StringVar(&cfg.SeedsPath, "seeds", "seeds/sources.json", "Path to initial seed sources JSON")
+	flag.StringVar(&cfg.SourceFlag, "source", "", "Filter crawling to a specific company or board identifier")
+	flag.StringVar(&cfg.TypeFlag, "type", "", "Filter crawling to a specific ATS type (greenhouse, lever, ashby)")
+	flag.StringVar(&cfg.DBURL, "db", "", "PostgreSQL database connection URL (defaults to DATABASE_URL env)")
+	flag.IntVar(&cfg.MetricsPort, "metrics-port", 9090, "Port to serve Prometheus /metrics (set to 0 to disable)")
+	flag.IntVar(&cfg.Concurrency, "concurrency", 3, "Number of concurrent sources to process")
+	flag.BoolVar(&cfg.Loop, "loop", false, "Run continuously on a periodic schedule instead of exiting")
+	flag.DurationVar(&cfg.Interval, "interval", 4*time.Hour, "Schedule polling interval when --loop is active")
+	flag.StringVar(&cfg.NotifyEmail, "notify-email", "", "Recipient email address for digest alerts (or NOTIFY_EMAIL env)")
+	flag.StringVar(&cfg.ResendKey, "resend-key", "", "Resend API key for email delivery (or RESEND_API_KEY env)")
+	flag.StringVar(&cfg.FromEmail, "from-email", "KubeJobs Alerts <onboarding@resend.dev>", "Sender email address (or FROM_EMAIL env)")
+	flag.StringVar(&cfg.WebhookURL, "webhook-url", "", "Slack/Discord incoming webhook URL (or WEBHOOK_URL env)")
 	flag.Parse()
+
+	// Environment variable fallbacks
+	if cfg.DBURL == "" {
+		cfg.DBURL = os.Getenv("DATABASE_URL")
+	}
+	if cfg.NotifyEmail == "" {
+		cfg.NotifyEmail = os.Getenv("NOTIFY_EMAIL")
+	}
+	if cfg.ResendKey == "" {
+		cfg.ResendKey = os.Getenv("RESEND_API_KEY")
+	}
+	if envFrom := os.Getenv("FROM_EMAIL"); envFrom != "" {
+		cfg.FromEmail = envFrom
+	}
+	if cfg.WebhookURL == "" {
+		cfg.WebhookURL = os.Getenv("WEBHOOK_URL")
+	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
@@ -50,7 +89,7 @@ func main() {
 	defer cancel()
 
 	// Optional Prometheus metrics server
-	if *metricsPort > 0 {
+	if cfg.MetricsPort > 0 {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())
 		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +97,7 @@ func main() {
 			w.Write([]byte("ok"))
 		})
 		srv := &http.Server{
-			Addr:    fmt.Sprintf(":%d", *metricsPort),
+			Addr:    fmt.Sprintf(":%d", cfg.MetricsPort),
 			Handler: mux,
 		}
 		go func() {
@@ -78,18 +117,13 @@ func main() {
 
 	// Setup database store (unless dry-run)
 	var store *postgres.PostgresStore
-	databaseURL := *dbURL
-	if databaseURL == "" {
-		databaseURL = os.Getenv("DATABASE_URL")
-	}
-
-	if !*dryRun {
-		if databaseURL == "" {
+	if !cfg.DryRun {
+		if cfg.DBURL == "" {
 			logger.Info("No DATABASE_URL configured; running in --dry-run mode")
-			*dryRun = true
+			cfg.DryRun = true
 		} else {
 			var err error
-			store, err = postgres.NewStore(ctx, databaseURL)
+			store, err = postgres.NewStore(ctx, cfg.DBURL)
 			if err != nil {
 				logger.Error("Failed to connect to PostgreSQL", "err", err)
 				os.Exit(1)
@@ -106,7 +140,7 @@ func main() {
 	}
 
 	// Load seed sources
-	sources, err := loadSources(*seedsPath, store, ctx, *dryRun)
+	sources, err := loadSources(cfg.SeedsPath, store, ctx, cfg.DryRun)
 	if err != nil {
 		logger.Error("Failed to load sources", "err", err)
 		os.Exit(1)
@@ -115,10 +149,10 @@ func main() {
 	// Filter sources if flags were provided
 	var targetSources []model.Source
 	for _, src := range sources {
-		if *sourceFlag != "" && !strings.EqualFold(src.BoardIdentifier, *sourceFlag) && !strings.EqualFold(src.CompanyName, *sourceFlag) {
+		if cfg.SourceFlag != "" && !strings.EqualFold(src.BoardIdentifier, cfg.SourceFlag) && !strings.EqualFold(src.CompanyName, cfg.SourceFlag) {
 			continue
 		}
-		if *typeFlag != "" && !strings.EqualFold(src.SourceType, *typeFlag) {
+		if cfg.TypeFlag != "" && !strings.EqualFold(src.SourceType, cfg.TypeFlag) {
 			continue
 		}
 		targetSources = append(targetSources, src)
@@ -129,20 +163,31 @@ func main() {
 		return
 	}
 
-	logger.Info("Loaded sources for crawling", "total", len(targetSources), "concurrency", *concurrency)
+	logger.Info("Loaded sources for crawling", "total", len(targetSources), "concurrency", cfg.Concurrency)
 
 	eng := engine.NewEngine(store, registry, matcher.NewMatcher(), logger)
 
+	// Setup notifiers
+	var notifiers []notify.Notifier
+	if cfg.ResendKey != "" && cfg.NotifyEmail != "" {
+		notifiers = append(notifiers, notify.NewResendNotifier(cfg.ResendKey, cfg.FromEmail, nil))
+		logger.Info("Email digest alerts configured via Resend", "to", cfg.NotifyEmail)
+	}
+	if cfg.WebhookURL != "" {
+		notifiers = append(notifiers, notify.NewWebhookNotifier(cfg.WebhookURL, nil))
+		logger.Info("Webhook alerts configured")
+	}
+
 	runCycle := func() {
-		runIngestionCycle(ctx, eng, targetSources, *concurrency, *dryRun)
+		runIngestionCycle(ctx, eng, targetSources, cfg, notifiers, logger)
 	}
 
 	runCycle()
 
-	if *loop {
-		ticker := time.NewTicker(4 * time.Hour)
+	if cfg.Loop {
+		ticker := time.NewTicker(cfg.Interval)
 		defer ticker.Stop()
-		logger.Info("Running in continuous schedule mode; next crawl in 4 hours")
+		logger.Info("Running in continuous schedule mode", "next_crawl_in", cfg.Interval)
 		for {
 			select {
 			case <-ctx.Done():
@@ -171,20 +216,18 @@ func loadSources(seedsPath string, s *postgres.PostgresStore, ctx context.Contex
 		return seedList, nil
 	}
 
-	// Upsert seeds into database
 	for i := range seedList {
 		if err := s.UpsertSource(ctx, &seedList[i]); err != nil {
 			slog.Warn("Failed to seed source into database", "company", seedList[i].CompanyName, "err", err)
 		}
 	}
 
-	// Fetch active sources from database
 	return s.GetActiveSources(ctx)
 }
 
-func runIngestionCycle(ctx context.Context, eng *engine.Engine, sources []model.Source, concurrency int, dryRun bool) {
+func runIngestionCycle(ctx context.Context, eng *engine.Engine, sources []model.Source, cfg Config, notifiers []notify.Notifier, logger *slog.Logger) {
 	start := time.Now()
-	sem := make(chan struct{}, concurrency)
+	sem := make(chan struct{}, cfg.Concurrency)
 	var wg sync.WaitGroup
 
 	var (
@@ -193,7 +236,9 @@ func runIngestionCycle(ctx context.Context, eng *engine.Engine, sources []model.
 		totalMatched    int
 		totalNew        int
 		totalUpdated    int
+		totalClosed     int
 		allMatchedJobs  []model.Job
+		newlyFoundJobs  []model.Job
 	)
 
 	for _, src := range sources {
@@ -208,14 +253,24 @@ func runIngestionCycle(ctx context.Context, eng *engine.Engine, sources []model.
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			summary := eng.CrawlSource(ctx, source, dryRun)
+			summary := eng.CrawlSource(ctx, source, cfg.DryRun)
 
 			mu.Lock()
 			totalDiscovered += summary.Discovered
 			totalMatched += summary.Matched
 			totalNew += summary.New
 			totalUpdated += summary.Updated
+			totalClosed += summary.Closed
 			allMatchedJobs = append(allMatchedJobs, summary.MatchedJobs...)
+
+			// In dry-run mode, all matched jobs are treated as newly discovered for preview
+			if cfg.DryRun {
+				newlyFoundJobs = append(newlyFoundJobs, summary.MatchedJobs...)
+			} else if summary.New > 0 {
+				for _, j := range summary.MatchedJobs {
+					newlyFoundJobs = append(newlyFoundJobs, j)
+				}
+			}
 			mu.Unlock()
 		}(src)
 	}
@@ -225,12 +280,12 @@ func runIngestionCycle(ctx context.Context, eng *engine.Engine, sources []model.
 	duration := time.Since(start).Round(time.Millisecond)
 	fmt.Println()
 	fmt.Println("-------------------------------------------------------------------")
-	fmt.Printf("Crawling Summary: %d Discovered | %d Matched | %d New | %d Updated\n",
-		totalDiscovered, totalMatched, totalNew, totalUpdated)
+	fmt.Printf("Crawling Summary: %d Discovered | %d Matched | %d New | %d Updated | %d Closed\n",
+		totalDiscovered, totalMatched, totalNew, totalUpdated, totalClosed)
 	fmt.Printf("Total Duration: %s\n", duration)
 	fmt.Println("-------------------------------------------------------------------")
 
-	if dryRun && len(allMatchedJobs) > 0 {
+	if cfg.DryRun && len(allMatchedJobs) > 0 {
 		fmt.Printf("\n=== MATCHED KUBERNETES & PLATFORM JOBS (%d) ===\n\n", len(allMatchedJobs))
 		for i, j := range allMatchedJobs {
 			fmt.Printf("[%d] %s — %s\n", i+1, j.Title, j.CompanyName)
@@ -241,6 +296,26 @@ func runIngestionCycle(ctx context.Context, eng *engine.Engine, sources []model.
 			}
 			fmt.Printf("    Match Proof: %s\n", j.SnippetMatch)
 			fmt.Printf("    URL:         %s\n\n", j.CanonicalURL)
+		}
+	}
+
+	// Dispatch alerts if notifiers configured and jobs discovered
+	if len(newlyFoundJobs) > 0 && len(notifiers) > 0 {
+		logger.Info("Dispatching digest alerts for new roles", "count", len(newlyFoundJobs))
+		payload := notify.DigestPayload{
+			Recipient:   cfg.NotifyEmail,
+			GeneratedAt: time.Now(),
+			NewJobs:     newlyFoundJobs,
+		}
+
+		for _, n := range notifiers {
+			if err := n.SendDigest(ctx, payload); err != nil {
+				logger.Error("Failed to send notification digest", "notifier", n.Name(), "err", err)
+				telemetry.NotificationsFailedTotal.WithLabelValues(n.Name()).Inc()
+			} else {
+				logger.Info("Notification digest dispatched successfully", "notifier", n.Name())
+				telemetry.NotificationsSentTotal.WithLabelValues(n.Name()).Inc()
+			}
 		}
 	}
 }

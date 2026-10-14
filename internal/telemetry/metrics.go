@@ -69,4 +69,22 @@ var (
 		},
 		[]string{"source", "error_type"},
 	)
+
+	// NotificationsSentTotal tracks successfully dispatched digests
+	NotificationsSentTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "notifications_sent_total",
+			Help: "Total notification digests sent successfully",
+		},
+		[]string{"channel"},
+	)
+
+	// NotificationsFailedTotal tracks failed notification attempts
+	NotificationsFailedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "notifications_failed_total",
+			Help: "Total notification dispatch failures",
+		},
+		[]string{"channel"},
+	)
 )

@@ -341,6 +341,31 @@ func (s *PostgresStore) ListJobs(ctx context.Context, filter store.JobFilter) ([
 	return jobs, totalCount, nil
 }
 
+// ReconcileSourceJobs marks active jobs not in activeExternalIDs as closed
+func (s *PostgresStore) ReconcileSourceJobs(ctx context.Context, sourceID int64, activeExternalIDs []string) (int64, error) {
+	if len(activeExternalIDs) == 0 {
+		return 0, nil
+	}
+
+	query := `
+		WITH closed AS (
+			UPDATE jobs
+			SET status = 'closed', updated_at = NOW()
+			WHERE source_id = $1
+			  AND status = 'active'
+			  AND NOT (external_id = ANY($2))
+			RETURNING id
+		)
+		SELECT COUNT(*) FROM closed
+	`
+	var closedCount int64
+	err := s.pool.QueryRow(ctx, query, sourceID, activeExternalIDs).Scan(&closedCount)
+	if err != nil {
+		return 0, fmt.Errorf("failed to reconcile closed jobs: %w", err)
+	}
+	return closedCount, nil
+}
+
 // StartCrawlRun records the start of a crawler run
 func (s *PostgresStore) StartCrawlRun(ctx context.Context, sourceID int64) (int64, error) {
 	query := `

@@ -9,19 +9,20 @@ import (
 	"time"
 
 	"github.com/bikrams/getfetch/internal/adapter"
+	"github.com/bikrams/getfetch/internal/httputil"
 	"github.com/bikrams/getfetch/internal/model"
 	"github.com/bikrams/getfetch/internal/normalizer"
 )
 
 type Adapter struct {
-	client  *http.Client
+	client  adapter.HTTPDoer
 	baseURL string
 }
 
 // NewAdapter creates an initialized Ashby Adapter
-func NewAdapter(client *http.Client) *Adapter {
+func NewAdapter(client adapter.HTTPDoer) *Adapter {
 	if client == nil {
-		client = adapter.DefaultHTTPClient
+		client = httputil.NewClient()
 	}
 	return &Adapter{
 		client:  client,

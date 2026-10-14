@@ -20,6 +20,7 @@ type CrawlSummary struct {
 	Matched     int
 	New         int
 	Updated     int
+	Closed      int
 	Duration    time.Duration
 	MatchedJobs []model.Job
 	Error       error
@@ -158,6 +159,21 @@ func (e *Engine) CrawlSource(ctx context.Context, source model.Source, dryRun bo
 				summary.Updated++
 				telemetry.JobsUpdatedTotal.WithLabelValues(source.CompanyName).Inc()
 			}
+		}
+	}
+
+	// Reconcile and mark stale jobs as closed
+	if e.store != nil && !dryRun && len(rawJobs) > 0 {
+		activeExternalIDs := make([]string, 0, len(rawJobs))
+		for _, raw := range rawJobs {
+			activeExternalIDs = append(activeExternalIDs, raw.ExternalID)
+		}
+		closedCount, err := e.store.ReconcileSourceJobs(ctx, source.ID, activeExternalIDs)
+		if err != nil {
+			e.logger.Error("Failed to reconcile closed jobs", "err", err)
+		} else if closedCount > 0 {
+			summary.Closed = int(closedCount)
+			e.logger.Info("Reconciled closed jobs", "company", source.CompanyName, "closed", closedCount)
 		}
 	}
 

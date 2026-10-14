@@ -20,6 +20,11 @@ var DefaultHTTPClient = &http.Client{
 	},
 }
 
+// HTTPDoer defines the minimal HTTP client interface required by adapters
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 // UserAgent sent with crawler requests to identify the bot politely
 const UserAgent = "getfetch-bot/1.0 (+https://github.com/bikrams/getfetch)"
 

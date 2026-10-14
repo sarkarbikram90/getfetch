@@ -29,6 +29,7 @@ type Store interface {
 	UpsertJob(ctx context.Context, job *model.Job) (isNew bool, isUpdated bool, err error)
 	GetJobByID(ctx context.Context, id int64) (*model.Job, error)
 	ListJobs(ctx context.Context, filter JobFilter) ([]model.Job, int, error)
+	ReconcileSourceJobs(ctx context.Context, sourceID int64, activeExternalIDs []string) (int64, error)
 
 	// CrawlRun audit operations
 	StartCrawlRun(ctx context.Context, sourceID int64) (int64, error)
