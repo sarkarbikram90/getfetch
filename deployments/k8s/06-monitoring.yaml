@@ -1,0 +1,53 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: getfetch-monitor
+  namespace: getfetch
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: getfetch-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: getfetch-alerts
+  namespace: getfetch
+  labels:
+    role: alert-rules
+spec:
+  groups:
+    - name: getfetch-sre-alerts
+      rules:
+        - alert: HighCrawlerFetchErrors
+          expr: rate(crawler_errors_total[15m]) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High error rate detected during source crawling"
+            description: "Crawler encounters errors exceeding 5% of operations in the last 15 minutes."
+
+        - alert: NotificationDeliveryFailing
+          expr: rate(notifications_failed_total[1h]) > 0
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Job digest notifications are failing"
+            description: "Alert digests cannot be delivered via Resend or Webhooks."
+
+        - alert: DatabaseConnectionPoolHigh
+          expr: go_sql_open_connections > 20
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PostgreSQL connection pool near saturation"
+            description: "Open connections to PostgreSQL exceed 80% capacity."

@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: getfetch-worker
+  namespace: getfetch
+  labels:
+    app: getfetch-worker
+spec:
+  schedule: "0 */4 * * *" # Every 4 hours
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 900 # 15 minutes timeout
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app: getfetch-worker
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: worker
+              image: getfetch/worker:latest
+              imagePullPolicy: IfNotPresent
+              args: ["-dry-run=false"]
+              envFrom:
+                - configMapRef:
+                    name: getfetch-config
+                - secretRef:
+                    name: getfetch-secrets
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
